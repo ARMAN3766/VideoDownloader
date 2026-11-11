@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
 
 fun isAllowed(url: String): Boolean {
     val host = Uri.parse(url).host?.removePrefix("www.") ?: return false
-    return ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }
+    return host.isNotBlank()
 }
 
 @Composable
