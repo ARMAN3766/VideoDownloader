@@ -13,5 +13,12 @@ class App : Application() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        Thread {
+            try {
+                YoutubeDL.getInstance().updateYoutubeDL(this, YoutubeDL.UpdateChannel.NIGHTLY)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }.start()
     }
 }
