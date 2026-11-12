@@ -21,7 +21,12 @@ jobs:
       - name: Install signing key
         run: |
           mkdir -p ~/.android
-          base64 -d signing/debug.keystore.b64 > ~/.android/debug.keystore
+          base64 -d signing/debug.keystore.b64 > ~/.android/debug.keystore || true
+          if ! keytool -list -keystore ~/.android/debug.keystore -storepass android > /dev/null 2>&1; then
+            echo "KEYSTORE INVALID - generating a temporary one"
+            rm -f ~/.android/debug.keystore
+            keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -29,7 +34,8 @@ jobs:
           gradle-version: 8.7
 
       - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          gradle assembleDebug --console=plain > build.log 2>&1 || { grep -E "^e: |What went wrong|error:" -A3 build.log | head -60; exit 1; }
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
