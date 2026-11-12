@@ -18,6 +18,11 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Install signing key
+        run: |
+          mkdir -p ~/.android
+          base64 -d signing/debug.keystore.b64 > ~/.android/debug.keystore
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
