@@ -12,33 +12,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Apply update bundle
+        run: |
+          if [ -f update.zip ]; then unzip -o update.zip; fi
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Install signing key
+      - name: Check signing secret
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
         run: |
-          mkdir -p ~/.android
-          base64 -d signing/debug.keystore.b64 > ~/.android/debug.keystore || true
-          if ! keytool -list -keystore ~/.android/debug.keystore -storepass android > /dev/null 2>&1; then
-            echo "KEYSTORE INVALID - generating a temporary one"
-            rm -f ~/.android/debug.keystore
-            keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          if [ -z "$KS_PASS" ]; then echo "KS_PASS secret is missing"; exit 1; fi
+          if [ ! -f signing/release.jks ]; then echo "signing/release.jks is missing"; exit 1; fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
 
-      - name: Build debug APK
+      - name: Build release APK
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
         run: |
-          gradle assembleDebug --console=plain > build.log 2>&1 || { grep -E "^e: |What went wrong|error:" -A3 build.log | head -60; exit 1; }
+          gradle assembleRelease --console=plain -PversionCode=${{ github.run_number }} -PversionName=2.0.${{ github.run_number }} > build.log 2>&1 || { grep -E "^e: |What went wrong|error:" -A3 build.log | head -80; exit 1; }
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk VideoDownloader-2.0.${{ github.run_number }}.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: VideoDownloader-2.0.${{ github.run_number }}.apk
