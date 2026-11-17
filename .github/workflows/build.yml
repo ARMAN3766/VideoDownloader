@@ -12,9 +12,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply update bundle
+      - name: Apply update bundles
         run: |
-          if [ -f update.zip ]; then unzip -o update.zip; fi
+          for z in update.zip account.zip; do
+            if [ -f "$z" ]; then unzip -o "$z"; fi
+          done
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -37,14 +39,16 @@ jobs:
       - name: Build release APK
         env:
           KS_PASS: ${{ secrets.KS_PASS }}
+          FB_API_KEY: ${{ secrets.FB_API_KEY }}
+          FB_PROJECT: ${{ secrets.FB_PROJECT }}
         run: |
-          gradle assembleRelease --console=plain -PversionCode=${{ github.run_number }} -PversionName=2.0.${{ github.run_number }} > build.log 2>&1 || { grep -E "^e: |What went wrong|error:" -A3 build.log | head -80; exit 1; }
+          gradle assembleRelease --console=plain -PversionCode=${{ github.run_number }} -PversionName=2.1.${{ github.run_number }} > build.log 2>&1 || { grep -E "^e: |What went wrong|error:" -A3 build.log | head -80; exit 1; }
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk VideoDownloader-2.0.${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk VideoDownloader-2.1.${{ github.run_number }}.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: VideoDownloader-APK
-          path: VideoDownloader-2.0.${{ github.run_number }}.apk
+          path: VideoDownloader-2.1.${{ github.run_number }}.apk
