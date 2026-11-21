@@ -17,14 +17,17 @@
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
         <service
             android:name=".VideoDetectService"
+            android:label="Video Downloader"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
 
@@ -35,6 +38,7 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+
         </service>
 
     </application>
