@@ -22,6 +22,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -100,6 +102,60 @@ fun checkPin(p: SharedPreferences, pin: String): Boolean =
 fun applySecure(a: Activity, on: Boolean) {
     if (on) a.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     else a.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+}
+
+// ---------- Image download (feature 2) ----------
+
+fun isImageUrl(url: String): Boolean {
+    val u = url.substringBefore("?").lowercase()
+    return listOf(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp").any { u.endsWith(it) }
+}
+
+fun downloadImage(ctx: Context, rawUrl: String): String {
+    val url = rawUrl.trim()
+    if (url.isEmpty()) return "লিংক খালি — আগে পেস্ট করো"
+    if (!url.startsWith("http")) return "সঠিক লিংক দাও"
+    if (!isImageUrl(url)) return "এটা ছবির লিংক নয় (.jpg/.png/.webp/.gif)"
+
+    val conn = URL(url).openConnection() as HttpURLConnection
+    conn.connectTimeout = 15000
+    conn.readTimeout = 30000
+    conn.instanceFollowRedirects = true
+    conn.connect()
+
+    val mime = conn.contentType ?: ""
+    if (!mime.startsWith("image") && mime.isNotEmpty() && !mime.contains("octet-stream"))
+        return "সার্ভার ছবি না, অন্য ফাইল দিচ্ছে ($mime)"
+
+    val ext = when {
+        mime.contains("png") -> "png"
+        mime.contains("gif") -> "gif"
+        mime.contains("webp") -> "webp"
+        mime.contains("jpeg") || mime.contains("jpg") -> "jpg"
+        else -> url.substringBefore("?").substringAfterLast('.', "jpg").lowercase()
+            .let { if (it.length in 3..4) it else "jpg" }
+    }
+    val bytes = conn.inputStream.use { it.readBytes() }
+    conn.disconnect()
+    if (bytes.isEmpty()) return "ফাইল খালি এসেছে"
+
+    val name = "IMG_${System.currentTimeMillis()}.$ext"
+    return if (Build.VERSION.SDK_INT >= 29) {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/$ext")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/VideoDownloader")
+        }
+        val uri = ctx.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: throw Exception("সেভ করা যায়নি")
+        ctx.contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
+        "ছবি ডাউনলোড হয়েছে: Pictures/VideoDownloader/$name"
+    } else {
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "VideoDownloader")
+        dir.mkdirs()
+        File(dir, name).writeBytes(bytes)
+        "ছবি ডাউনলোড হয়েছে: ${dir.path}/$name"
+    }
 }
 
 // ---------- Download logic ----------
