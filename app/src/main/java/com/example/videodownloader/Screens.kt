@@ -23,6 +23,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,6 +35,20 @@ fun DownloadTab(prefs: SharedPreferences) {
     val ctx = LocalContext.current
     val clip = LocalClipboardManager.current
     var priv by remember { mutableStateOf(prefs.getBoolean("priv_default", false)) }
+    var mode by remember { mutableStateOf(0) } // 0=ভিডিও, 1=ছবি
+    var imgUrl by remember { mutableStateOf("") }
+    var imgBusy by remember { mutableStateOf(false) }
+    var imgMsg by remember { mutableStateOf("") }
+
+    // ভাসমান বাটন থেকে আসা লিংক অটো ডাউনলোড
+    LaunchedEffect(Unit) {
+        Auto.url?.let { u ->
+            Dl.url = u
+            Auto.url = null
+            if (!Dl.busy && Dl.url.isNotBlank()) startDownload(ctx.applicationContext, prefs, priv)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -41,6 +58,64 @@ fun DownloadTab(prefs: SharedPreferences) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Video Downloader", style = MaterialTheme.typography.headlineSmall)
+
+        // মোড সিলেক্ট: ভিডিও / ছবি
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = mode == 0,
+                onClick = { mode = 0 },
+                label = { Text("ভিডিও") }
+            )
+            FilterChip(
+                selected = mode == 1,
+                onClick = { mode = 1 },
+                label = { Text("ছবি") }
+            )
+        }
+
+        if (mode == 1) {
+            // ---------- ছবি ডাউনলোড মোড ----------
+            OutlinedTextField(
+                value = imgUrl,
+                onValueChange = { imgUrl = it.trim() },
+                label = { Text("ছবির লিংক Paste করো") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    clip.getText()?.text?.let { imgUrl = it.trim() }
+                }) { Text("Paste") }
+                OutlinedButton(onClick = {
+                    imgUrl = ""
+                    imgMsg = ""
+                }) { Text("Clear") }
+            }
+            Button(
+                enabled = !imgBusy && imgUrl.isNotBlank(),
+                onClick = {
+                    imgBusy = true
+                    imgMsg = "ছবি ডাউনলোড হচ্ছে..."
+                    appScope.launch {
+                        imgMsg = withContext(Dispatchers.IO) {
+                            try {
+                                downloadImage(ctx.applicationContext, imgUrl)
+                            } catch (e: Exception) {
+                                "ব্যর্থ: " + (e.message ?: "unknown").take(200)
+                            }
+                        }
+                        imgBusy = false
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("ছবি ডাউনলোড") }
+            if (imgMsg.isNotEmpty()) Text(imgMsg)
+            Text(
+                "ছবি গ্যালারির Pictures/VideoDownloader ফোল্ডারে সেভ হবে।",
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else {
+
+        // ---------- ভিডিও ডাউনলোড মোড (আগের মতোই) ----------
         OutlinedTextField(
             value = Dl.url,
             onValueChange = { Dl.url = it.trim() },
@@ -103,6 +178,7 @@ fun DownloadTab(prefs: SharedPreferences) {
             "DRM বা পেওয়ালের ভেতরের ভিডিও ডাউনলোড হবে না। ডাউনলোড চলার সময় অ্যাপ খোলা রাখুন।",
             style = MaterialTheme.typography.bodySmall
         )
+        }
     }
 }
 
@@ -110,6 +186,7 @@ fun DownloadTab(prefs: SharedPreferences) {
 fun HistoryTab(prefs: SharedPreferences) {
     val ctx = LocalContext.current
     var play by remember { mutableStateOf<HItem?>(null) }
+    var del by remember { mutableStateOf<HItem?>(null) }
     val fmt = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()) }
     Column(
         modifier = Modifier
@@ -120,6 +197,7 @@ fun HistoryTab(prefs: SharedPreferences) {
         Text("History", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // FIX: শুধু লিস্ট মুছবে, ফোনের ফাইল টিকবে
             OutlinedButton(onClick = {
                 Dl.history = emptyList()
                 saveHistory(prefs, emptyList())
@@ -145,11 +223,7 @@ fun HistoryTab(prefs: SharedPreferences) {
                         Text(h.path, style = MaterialTheme.typography.bodySmall)
                         Row {
                             TextButton(onClick = { play = h }) { Text("Play") }
-                            TextButton(onClick = {
-                                deleteItemFile(ctx, h)
-                                Dl.history = Dl.history.filter { it != h }
-                                saveHistory(prefs, Dl.history)
-                            }) { Text("Delete") }
+                            TextButton(onClick = { del = h }) { Text("Delete") }
                         }
                     }
                 }
@@ -157,6 +231,35 @@ fun HistoryTab(prefs: SharedPreferences) {
         }
     }
     play?.let { h -> PlayerDialog(h) { play = null } }
+
+    // প্রতিটি আইটেমের ডিলিট কনফার্মেশন
+    del?.let { h ->
+        AlertDialog(
+            onDismissRequest = { del = null },
+            title = { Text("মুছে ফেলবে?") },
+            text = { Text(h.title) },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = {
+                        // শুধু হিস্টরি থেকে মুছুন — ফোনের ফাইল থাকবে
+                        Dl.history = Dl.history.filter { it != h }
+                        saveHistory(prefs, Dl.history)
+                        del = null
+                    }) { Text("শুধু এন্ট্রি") }
+                    TextButton(onClick = {
+                        // ফাইলসহ মুছুন
+                        deleteItemFile(ctx, h)
+                        Dl.history = Dl.history.filter { it != h }
+                        saveHistory(prefs, Dl.history)
+                        del = null
+                    }) { Text("ফাইলসহ মুছুন", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { del = null }) { Text("বাতিল") }
+            }
+        )
+    }
 }
 
 @Composable
