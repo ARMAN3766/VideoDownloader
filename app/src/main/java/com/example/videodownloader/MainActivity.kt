@@ -1,6 +1,7 @@
 package com.example.videodownloader
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,6 +23,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
+// ভাসমান বাটন থেকে আসা অটো-ডাউনলোড লিংক এখানে জমা হয়
+object Auto {
+    var url by mutableStateOf<String?>(null)
+}
+
 // ---------- Activity ----------
 
 class MainActivity : ComponentActivity() {
@@ -32,7 +38,17 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("vd", Context.MODE_PRIVATE)
         applySecure(this, prefs.getBoolean("secure", true))
         Dl.history = loadHistory(prefs)
+        handleAutoUrl(intent)
         setContent { AppTheme { Root(prefs, unlocked) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAutoUrl(intent)
+    }
+
+    private fun handleAutoUrl(i: Intent?) {
+        i?.getStringExtra("auto_url")?.let { Auto.url = it }
     }
 
     override fun onStop() {
